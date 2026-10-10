@@ -476,7 +476,7 @@ def report_parse_errors(builder, filename, preserved=True):
         logging.error("!! Happy Hare has continued, but please fix them and re-run the installer")
     else:
         logging.error("!! Any settings in these lines could not be read and will be MISSING from the")
-        logging.error("!! rebuilt config. Fix them in the '.old-<timestamp>' backup and re-run the installer")
+        logging.error("!! rebuilt config. Fix them in the backup of the original file and re-run the installer")
     return True
 
 

@@ -182,14 +182,19 @@ SUDO := $(shell \
 restart_moonraker = 0
 restart_klipper = 0
 
+# printer.cfg and moonraker.conf backups follow the naming used by Klipper/Moonraker themselves:
+#   printer-20261010_155021.cfg  and  moonraker.conf.2026-10-10-1550
+printer_backup   := $(KLIPPER_CONFIG_HOME)/$(basename $(PRINTER_CONFIG_FILE))-$(shell date '+%Y%m%d_%H%M%S')$(suffix $(PRINTER_CONFIG_FILE))
+moonraker_backup := $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE).$(shell date '+%Y-%m-%d-%H%M')
+
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
 .PHONY: menuconfig install uninstall check_version diff lint spellcheck test console filament_display plot_sync venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
-	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
-	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
-	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
+	$(mmu_backup) \
+	$(moonraker_backup) \
+	$(printer_backup)
 
 
 
@@ -270,14 +275,15 @@ copy = \
 
 strip_prefix = $(patsubst $(1)%,%,$(2))
 
-backup_ext  := .old-$(shell date '+%Y%m%d-%H%M%S')
-backup_name = $(addsuffix $(backup_ext),$(1))
+mmu_backup       := $(KLIPPER_CONFIG_HOME)/mmu-$(shell date '+%Y%m%d_%H%M%S')
+
+# $(1)=source, $(2)=backup path, $(3)=skip flag (recovery already preserved it)
 backup = \
-	if [ -n "$(2)" ]; then \
+	if [ -n "$(3)" ]; then \
 	  echo "$(C_INFO)Skipping backup of '$(1)' because recovery already preserved it$(C_OFF)"; \
-	elif [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
-	  echo "$(C_INFO)Making a backup of '$(1)' to '$(notdir $(call backup_name,$(1)))'$(C_OFF)"; \
-	  $(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
+	elif [ -e "$(1)" ] && [ ! -e "$(2)" ]; then \
+	  echo "$(C_INFO)Making a backup of '$(1)' to '$(notdir $(2))'$(C_OFF)"; \
+	  $(SUDO)cp -a "$(1)" "$(2)"; \
 	fi
 
 restart_service = \
@@ -386,37 +392,44 @@ $(MOONRAKER_HOME)/%: $(OUT)/% | $(MOONRAKER_HOME)/moonraker/components
 
 ifneq ($(strip $(MOONRAKER_CONFIG_FILE)),)
 # Install moonraker.conf
-$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
+$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(moonraker_backup)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 endif
 
 ifneq ($(strip $(PRINTER_CONFIG_FILE)),)
 # Install printer.cfg
-$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
+$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(printer_backup)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 endif
 
 # Install Happy-Hare *.cfg files
-$(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
+$(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(mmu_backup) 
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
 # Special recipe for mmu_vars.cfg, so it doesn't overwrite an existing mmu_vars.cfg
 # Avoiding use of non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
-$(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)
+$(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(mmu_backup)
 	$(Q)$(SUDO)mkdir -p "$(dir $@)"
 	$(Q)[ -f "$@" ] || $(SUDO)cp -p "$(firstword $|)" "$@"
 	$(Q)$(eval restart_klipper = 1)
 
-# Recipe to backup printer.cfg and moonraker.conf before installing
-$(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
-	$(Q)$(call backup,$(basename $@))
+# Recipes to backup printer.cfg and moonraker.conf before installing
+ifneq ($(strip $(MOONRAKER_CONFIG_FILE)),)
+$(moonraker_backup): $(OUT)/$(MOONRAKER_CONFIG_FILE) | build
+	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$@)
+endif
+
+ifneq ($(strip $(PRINTER_CONFIG_FILE)),)
+$(printer_backup): $(OUT)/$(PRINTER_CONFIG_FILE) | build
+	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$@)
+endif
 
 # Recipe to backup Happy-Hare configs before installing
-$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
-	$(Q)$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))
+$(mmu_backup): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
+	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu,$@,$(F_NO_MMU_BACKUP))
 
 $(install_targets): build | python_deps
 
@@ -435,10 +448,10 @@ install: $(install_targets)
 
 uninstall: clean | python_deps
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
-		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)))
+		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(moonraker_backup)))
 	$(Q)$(if $(PRINTER_CONFIG_FILE), \
-		$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)))
-	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu)
+		$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(printer_backup)))
+	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu,$(mmu_backup))
 	@# Be sure older v3 files are also removed
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	@# Remove the installed files

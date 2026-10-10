@@ -127,12 +127,12 @@ class TestInstallSh(unittest.TestCase):
         self.assertTrue((repo_dest / ".mmu_config").exists())
         self.assertTrue((repo_dest / ".mmu_config_unit0").exists())
         self.assertFalse((repo_dest / ".mmu_config.old").exists())
-        self.assertEqual(list(config_home.glob("mmu.old-*")), [])
+        self.assertEqual(list(config_home.glob("mmu-*")), [])
 
     def test_last_without_current_restores_newest_backup(self):
         config_home = self.root / "printer_data" / "config"
-        older = config_home / "mmu.old-20260101-010203"
-        newer = config_home / "mmu.old-20260830-120000"
+        older = config_home / "mmu-20260101_010203"
+        newer = config_home / "mmu-20260830_120000"
         repo_dest = self.root / "happy-hare"
         repo_dest.mkdir()
         self.make_mmu_config(older, "older-marker")
@@ -156,8 +156,8 @@ class TestInstallSh(unittest.TestCase):
     def test_prev_lists_newest_first_and_preserves_current_before_restore(self):
         config_home = self.root / "printer_data" / "config"
         current = config_home / "mmu"
-        older = config_home / "mmu.old-20260101-010203"
-        newer = config_home / "mmu.old-20260830-120000"
+        older = config_home / "mmu-20260101_010203"
+        newer = config_home / "mmu-20260830_120000"
         repo_dest = self.root / "happy-hare"
         repo_dest.mkdir()
         self.make_mmu_config(current, "current-marker")
@@ -182,11 +182,11 @@ class TestInstallSh(unittest.TestCase):
 
         self.assertIn("1) mmu (current config)", result.stdout)
         self.assertIn(
-            "2) mmu.old-20260830-120000 (2026-08-30 12:00:00)",
+            "2) mmu-20260830_120000 (2026-08-30 12:00:00)",
             result.stdout,
         )
         self.assertIn(
-            "3) mmu.old-20260101-010203 (2026-01-01 01:02:03)",
+            "3) mmu-20260101_010203 (2026-01-01 01:02:03)",
             result.stdout,
         )
         self.assertIn("Choose backup to restore from (1-3)?", result.stderr)
@@ -196,7 +196,7 @@ class TestInstallSh(unittest.TestCase):
         self.assertFalse((repo_dest / ".mmu_config.old").exists())
 
         preserved = [
-            path for path in config_home.glob("mmu.old-*")
+            path for path in config_home.glob("mmu-*")
             if (path / "current-marker").exists()
         ]
         self.assertEqual(len(preserved), 1)
@@ -260,7 +260,7 @@ class TestInstallSh(unittest.TestCase):
             f"include {MAKEFILE}\n"
             ".PHONY: installer-backup-test\n"
             "installer-backup-test:\n"
-            "\t$(Q)$(call backup,$(BACKUP_TEST_PATH),$(F_NO_MMU_BACKUP))"
+            "\t$(Q)$(call backup,$(BACKUP_TEST_PATH),$(BACKUP_TEST_PATH)-backup,$(F_NO_MMU_BACKUP))"
         )
         test_makefile = self.write(self.root / "backup-test.mk", recipe)
         common = [
@@ -281,7 +281,7 @@ class TestInstallSh(unittest.TestCase):
             check=True,
         )
         self.assertIn("recovery already preserved it", skipped.stdout)
-        self.assertEqual(list(self.root.glob("mmu.old-*")), [])
+        self.assertEqual(list(self.root.glob("mmu-*")), [])
 
         subprocess.run(
             common,
@@ -290,9 +290,9 @@ class TestInstallSh(unittest.TestCase):
             capture_output=True,
             check=True,
         )
-        self.assertEqual(len(list(self.root.glob("mmu.old-*"))), 1)
+        self.assertEqual(len(list(self.root.glob("mmu-*"))), 1)
         self.assertIn(
-            "$(call backup,$(basename $@),$(F_NO_MMU_BACKUP))",
+            "$(call backup,$(KLIPPER_CONFIG_HOME)/mmu,$@,$(F_NO_MMU_BACKUP))",
             MAKEFILE.read_text(encoding="utf-8"),
         )
 

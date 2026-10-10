@@ -203,7 +203,7 @@ restore_mmu_config() {
     fi
 
     if [ -e "${current_config}" ]; then
-        backup_base="${config_home}/mmu.old-$(date +%Y%m%d-%H%M%S)"
+        backup_base="${config_home}/mmu-$(date +%Y%m%d_%H%M%S)"
         current_backup=${backup_base}
         backup_suffix=0
         while [ -e "${current_backup}" ]; do
@@ -221,7 +221,8 @@ restore_mmu_config() {
     export F_NO_MMU_BACKUP=y
 }
 
-# Format the timestamp embedded in standard mmu.old-YYYYMMDD-HHMMSS backup names.
+# Format the timestamp embedded in standard mmu-YYYYMMDD_HHMMSS backup names (the
+# legacy mmu.old-YYYYMMDD-HHMMSS form is still recognized).
 format_recovery_choice() {
     backup_name=$(basename "$1")
     if [ "$2" = current ]; then
@@ -230,7 +231,7 @@ format_recovery_choice() {
     fi
 
     backup_timestamp=$(printf '%s\n' "${backup_name}" | sed -n \
-        's/^mmu\.old-\([0-9][0-9][0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)-\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)$/\1-\2-\3 \4:\5:\6/p')
+        's/^mmu\(\.old\)\{0,1\}-\([0-9][0-9][0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)[-_]\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)$/\2-\3-\4 \5:\6:\7/p')
     if [ -n "${backup_timestamp}" ]; then
         echo "${backup_name} (${backup_timestamp})"
     else
